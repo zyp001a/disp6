@@ -1,0 +1,36 @@
+#!/usr/bin/env node
+var d = require("../src");
+var fs = require("fs");
+var rl = require('readline');
+var args = "`";
+for(var i=2; i<process.argv.length; i++){
+	args+=process.argv[i] + " ";
+}
+args+="`"
+var context = {
+	user: process.env.USER,
+	lang: "disp"
+}
+if(process.argv.length > 2){
+	d(args);
+}else{
+	shell(context);
+}
+function shell(){
+	ask(function(str){
+		var result = d("`"+str+"`");
+		if(result)
+			process.exit();
+		else
+			shell();
+	})
+}
+function ask(cb) {
+  var r = rl.createInterface({
+    input: process.stdin,
+    output: process.stdout});
+  r.question("`", function(answer){
+    r.close();
+		cb(answer);
+  });
+}
