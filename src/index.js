@@ -5,18 +5,30 @@ var parser = require("./parser");
 var child = require("child_process");
 
 var rootns = newcpt();
-var rootref = newref("rootns", undefined, rootns);
+
 var protos = {};
-var protolist = ["Function", "Native", "Undefined", "String", "Number", "Raw"];
+var protolist = [
+	"Function",
+	"Native",
+	"Undefined",
+	"String",
+	"Number",
+	"Word",
+	"Raw",
+	"Ref"
+];
+protos.PROTO = getcpt(rootns, "PROTO");
 for(var i in protolist){
 	var p = protolist[i];
 	protos[p] = getcpt(rootns, p);
+	protos[p].proto.PROTO = protos.PROTO;
 }
+var rootref = newref("rootns", undefined, rootns);
+
 var active = [['Function', {newfunc: 1}]];
 var halfcalls = {};
 var halfcalli = 0;
 var callstodo = [];
-var estodo = [];
 var cptstodo = [];
 var native = {};
 function deffunc(func){
@@ -32,15 +44,22 @@ function deffunc(func){
 	return cpt;
 }
 deffunc(function _assign(left, right){
-	left.value = right;
-	right.refed[left.name] = left;
+	left.static.value = right;
+	right.refed[left.static.name] = left;
 });
 deffunc(function _inspect(obj){
+	console.log("inspect:");
+	console.log(obj);
+});
+deffunc(function _print(obj){
 	console.log(obj.static.raw);
 });
 deffunc(function _vaguecall(aste){
 	var self = this;
-	vaguecall(aste.static.raw, self.env);
+	var calls = vaguecall(aste.static.raw, self.env);
+	for(var i in calls){
+		call(calls[i], self.env);
+	}
 });
 deffunc(function _get(id){
 	console.log(id)
@@ -69,11 +88,10 @@ function newenv(env){
 }
 function newcpt(p){
 	var cpt = {
-		expects: [],
 		static: {},
 		dynamic: {},
 		proto: {},//proto
-		refed: {},
+		refed: {},//
 		index: 0
 	}
 	if(p){
@@ -86,28 +104,26 @@ function newref(name, from, value, type){
 		name = "ref"+from.index;
 		from.index++;
 	}
-	var ref = {
+	var ncpt = newcpt("Ref");
+	ncpt.static = {
 		name: name,
 		from: from,
 		value: value,
 		type: type
 	}
 	if(value)
-		value.refed[name] = ref;
+		value.refed[name] = ncpt;
 	if(from)
-		from.dynamic[name] = ref;
-	return ref;
-}
-function istype(cpt, protocpt){
-	
+		from.dynamic[name] = ncpt;
+	return ncpt;
 }
 function getcpt(cpt, name, config){
 	if(cpt.dynamic[name])
-		return cpt.dynamic[name];
+		return cpt.dynamic[name].static.value;
 	if(!config) config = {};
 	if(!config.local){
 		for(var r in cpt.refed){
-			var from = cpt.refed[r].from;
+			var from = cpt.refed[r].static.from;
 			if(!from) continue;
 			var rcpt = getcpt(from, name, {notnew: 1});
 			if(rcpt) return rcpt;
@@ -138,54 +154,76 @@ function input(cpt){
 function vaguecall(str, env){
 	str = str.replace(/^\s*/, "");
 	str = str.replace(/\s*$/, "");
-	var arr = str.split(/\s*/);
+	var arr = str.split(/\s+/);
 	walk(arr, 0, env);
-
 	var calls = [];
-	for(var i = 0; i < callstodo.length - 2; i++){
-		var thecall = cpt2call(callstodo[i], env);
+	for(var i = 0; i < callstodo.length; i++){
+		var thecall = callstodo[i];
 		if(thecall)
 			calls.push(thecall);
 	}
 	if(!calls.length){
-		for(var i in estodo){
-			calls.push({
-				calls: [
-					{native: native.inspect},
-					{raw: estodo[i]}
-				]
-			})
+		for(var i=cptstodo.length-1;i>=0;i--){
+			calls.push(gennativecall("inspect", cptstodo[i].static.raw));
 		}
 	}
-	return call({
-		calls: calls
-	}, env);
+	return calls;
 }
 function newhalfcall(cpt){
-	
 	halfcalls[halfcalli] = {
-		i: halfcalli,
-		func: cpt,
+		func: cpt,		
 		args: [],
 		argc: 0
 	}
+	for(var i in cpt.static.argdef){
+		active.push(['Cpt', {funci: halfcalli, argi: i}]);
+	}
 	halfcalli ++;
+	
 }
 function fillhalfcall(halfcalli, argi, cpt, env){
 	var hc = halfcalls[halfcalli];
 	hc.args[argi] = cpt2call(cpt, env);
 	hc.argc++;
 	if(hc.argc == hc.func.static.argdef.length){
-		callstodo.push(hc2call(hc, env));
+		callstodo.push(hc);
 		delete halfcalls[halfcalli];
+	}else{
+		//auto fill half calls
+	}
+}
+function subgettype(proto, cpt, type, env){
+	var pr = proto.static.parent || {};
+	if(pr[type])
+		return cpt;
+	var tr = proto.static.transit || {};
+	if(tr[type]){
+		var rcpt = call({
+			func: ['_id', 'tr'+relpath(proto)+'2'+type],
+			args: [
+				cpt2call(cpt, env)
+			],
+			argc: 1
+		})
+		return rcpt;
 	}
 }
 function gettype(cpt, type, env){
-	for(var key in cpt){
+	if(type == "Cpt") return cpt;
+	if(cpt.proto[type]){
+		return cpt;
+	}
+	for(var p in cpt.proto){
+		var proto = cpt.proto[p];
+		var rcpt = subgettype(proto, cpt, type, env);
+		if(rcpt)
+			return rcpt;
+	}
+	for(var key in cpt.static.subs){
 		var scpt = getcpt(env, key);
-		if(scpt.static[type]) return scpt;
-		var sscpt = gettype(scpt, type);
+		var sscpt = gettype(scpt, type, env);
 		if(sscpt) return sscpt;
+		
 	}
 }
 function doactive(conf, cpt, env){
@@ -193,102 +231,92 @@ function doactive(conf, cpt, env){
 		newhalfcall(cpt, env);
 	}else if(conf.funci!=undefined && conf.argi!=undefined){
 		fillhalfcall(conf.funci, conf.argi, cpt, env);
+		return 1;
 	}else{
 		console.log(conf);
 		die("wrongconf")
 	}
-		
 }
 var op = {
 	"=": "eq",
 	"+": "plus"
 }
-function walk(arr, i, env){
-	if(i>arr.length-1){			
+function walk(arr, arri, env){
+	if(arri>arr.length-1){			
 		return;
 	}
-	var e = arr[i];
+	var e = arr[arri];
 	if(op[e]){
 		e = op[e];
 	}
 	var cpt;
 	if(e.match(/^\$?[A-Za-z][0-9a-zA-Z]*$/)){
 		cpt = getcpt(env, e, {notnew:1});
-		if(cpt){
-			var got = 0;
-			for(var i=active.length - 1;i>=0;i--){
-				var ae = active[i];
-				var subcpt = gettype(cpt, ae[0]);
-				if(subcpt){
-					doactive(ae[1], env);
-					got = 1;
-					break;
+		if(!cpt){
+			cpt = newcpt("Word");
+			cpt.static.raw = e;
+		}
+		var got = 0;
+		for(var i=active.length - 1;i>=0;i--){
+			var ae = active[i];
+			var subcpt = gettype(cpt, ae[0]);
+			if(subcpt){
+				if(doactive(ae[1], subcpt, env)){
+					active.splice(i, 1);
 				}
+				got = 1;
+				break;
 			}
-			if(!got){
-				cptstodo.push(cpt);
-			}
-		}else{
-			estodo.push(e);
+		}
+		if(!got){
+			cptstodo.push(cpt);
 		}
 	}else{
-		//0a 0 12
+		//0a
+		//14 235 23 412
 	}
-	return walk(arr, i+1, env);
-	/*
-	if(i == arr.length - 1 && calls.length == 0)
-		calls.push({calls: [
-			{native: native.inspect},
-			{raw: e}
-		]});
-	//as raw
-*/
+	return walk(arr, arri+1, env);
 }
 function newcall(aste){
 	if(aste.length == 1){
 		return ast2call(aste[0]);
 	}
-	var calls = [];
-	for(var i in aste){
+	var args = [];
+	for(var i=1;i<aste.length;i++){
 		var e = aste[i];
-		calls.push(ast2call(e));
+		args.push(ast2call(e));
 	}
 	var callobj = {
-		calls: calls
+		funcpre: ast2call(aste[0]),
+		args: args,
+		argc: aste.length -1 
 	}
 	return callobj;
 }
 function relpath(cpt){
 	return Object.keys(cpt.refed)[0].name;
 }
-function hc2call(hc, env){
-	var c = {
-		calls: [cpt2call(hc.func, env)]
+function gennativecall(func, e){
+	return {
+		func: native[func],
+		args: [{raw: e}],
+		argc: 1
 	}
-	for(var i in hc.args){
-		c.calls.push(cpt2call(hc.args[i], env));
-	}
-	return c;
 }
 function cpt2call(cpt, env){//
 	if(cpt.static.raw)
 		return {raw: cpt.static.raw};
-	return {calls: [
-		{native: native.get},
-		{raw: relpath(cpt)}
-	]}
+	return gennativecall("get", relpath(cpt));
 	//TODO
 }
+
 function ast2call(ast){
 	var c = ast[0];
 	var e = ast[1];
 	var cpt;
 	switch(c){
 	case "_id":
-		cpt = {calls: [
-			{native: native.get},
-			{raw: e}
-		]}
+		cpt = gennativecall("get", e);
 		break;
 	case "_string":
 		cpt = {raw: e};
@@ -297,10 +325,7 @@ function ast2call(ast){
 		cpt = {raw: e};
 		break;
 	case "_vaguecall":
-		cpt = {calls: [
-			{native: native.vaguecall},
-			{raw: e}
-		]}
+		cpt = gennativecall("vaguecall", e);
 		break;
 	case "_newcall":
 		cpt = newcall(e);
@@ -320,32 +345,28 @@ native
 calls
  */
 function call(callobj, env){
-	if(callobj.raw){
+	if("raw" in callobj){
 		return raw2cpt(callobj.raw);
 	}
-	var calls = callobj.calls;
-	var main = calls[0];
+	var main = callobj.func;
+	if(!main && callobj.funcpre){
+		main = call(callobj.funcpre, env);
+	}
 	if(!main){
 		console.log(callobj)
 		die("wrong call");
 	}
 	var args = [];
-	for(var i=1; i<calls.length; i++){
-		args.push(call(calls[i], env));
+	for(var i =0; i<callobj.argc; i++){
+		args.push(call(callobj.args[i], env));
 	}
-	if(main.raw){
-		console.log("!!!!")
-		return raw2cpt(main.raw);
-	}
-	if(main.native){
-		return raw2cpt(main.native.static.native.apply({
+	if(main.static.native){
+		return raw2cpt(main.static.native.apply({
 			env: env
 		}, args));
 	}
-
-	if(main.calls){
-		var corefunc = call(main, env);
-		var st = corefunc.static;
+	if(main.static.calls){
+		var st = main.static;
 		//*
 		//pseudo in env
 		//gen in env
