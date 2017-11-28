@@ -11,11 +11,11 @@ var context = {
 	user: process.env.USER,
 	lang: "disp"
 }
-if(process.argv.length > 2){
-	d(args);
-}else{
-	shell(context);
-}
+//if(process.argv.length > 2){
+d(args, {interactive:1});
+//}else{
+//	shell(context);
+//}
 function shell(){
 	ask(function(str){
 		var result = d("`"+str+"`");
