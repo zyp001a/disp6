@@ -1,7 +1,12 @@
 #!/usr/bin/env node
-var d = require("../src");
+var d = require("./src");
 var fs = require("fs");
 var rl = require('readline');
+//if(!fs.existsSync("mem")){
+	d("bootstrapDisp _");
+//}
+
+
 var args = "`";
 for(var i=2; i<process.argv.length; i++){
 	args+=process.argv[i] + " ";

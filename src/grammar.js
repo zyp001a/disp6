@@ -101,7 +101,8 @@ var grammar = {
 			["Id", "$$ = $1"],
 			["Id : ID", "$$ = $1; $$[2] = $3"],
 			["STRING", "$$ = ['_string', $1]"],
-			["NUMBER", "$$ = ['_number', Number($1)]"]
+			["NUMBER", "$$ = ['_number', Number($1)]"],
+			["_", "$$ = 'Undefined'"]
 		],
 		"Ln": [
 			["L", "$$ = $1;"],
@@ -172,6 +173,7 @@ var grammar = {
       ["IdstrArray , ID : ID", "$$ = $1, $1.push({id:$3, type:$5})"]
     ],
 		"ArgDef": [
+			["[ ]", "$$ = ['_argdef', []]"],
 			["[ IdstrArray ]", "$$ = ['_argdef', $2]"]
 		]
   }
