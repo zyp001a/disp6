@@ -443,8 +443,7 @@ function doactive(cpt, env, vt){
 		var ae = vt.active[i];
 		var subcpt = gettype(cpt, ae[0], env);
 		if(subcpt){
-			if(subdoactive(ae[1], subcpt, env, vt)){
-				vt.active.splice(i, 1);
+			if(subdoactive(ae[1], subcpt, env, vt, i)){
 			}
 			got = 1;
 			cpt = subcpt;
@@ -457,13 +456,13 @@ function doactive(cpt, env, vt){
 	}
 	return got;
 }
-function subdoactive(conf, cpt, env, vt){
+function subdoactive(conf, cpt, env, vt, activei){
 	var hc;
 	if(conf.newfunc){
 		hc = newhalfcall(cpt, env, vt);
 	}else if(conf.funci!=undefined && conf.argi!=undefined){
 		hc = fillhalfcall(conf.funci, conf.argi, cpt, env, vt);
-		return 1;
+		vt.active.splice(activei, 1);
 	}else{
 		log(conf);
 		die("wrongconf")
@@ -593,7 +592,7 @@ raw
 native
 calls
  */
-function call(callobj, env){
+function call(callobj, env){	
 	if("raw" in callobj){
 		return raw2cpt(callobj.raw);
 	}
@@ -633,7 +632,8 @@ function call(callobj, env){
 		//
 		var nenv = newenv(env)
 		for(var i in st.argdef){
-			
+			var sarg = st.argdef[i]
+			newaddr(sarg.id, nenv, args[i]);
 		}
 		for(var i in st.calls){
 			var subcall = st.calls[i];
