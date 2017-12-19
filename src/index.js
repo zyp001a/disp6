@@ -17,7 +17,6 @@ Object.defineProperty(global, '__stack', {
     return stack;
   }
 });
-
 Object.defineProperty(global, '__line', {
 	get: function() {
     return __stack[2].getLineNumber();
@@ -28,7 +27,6 @@ Object.defineProperty(global, '__line2', {
     return __stack[3].getLineNumber();
   }
 });
-
 Object.defineProperty(global, '__function', {
 	get: function() {
     return __stack[2].getFunctionName();
@@ -37,11 +35,12 @@ Object.defineProperty(global, '__function', {
 
 
 
-var rootns = newcpt();
+var rootenv = newcpt();
+rootenv.static.isroot = 1;
 var protos = {};
-protos.PROTO = getcpt(rootns, "PROTO");
+protos.PROTO = getcpt(rootenv, "PROTO");
 function defproto(p, ex){
-	var cpt = protos[p] = getcpt(rootns, p);
+	var cpt = protos[p] = getcpt(rootenv, p);
 	protos[p].proto.PROTO = protos.PROTO;
 	if(ex)
 		ex(cpt);
@@ -53,9 +52,10 @@ defproto("Function")
 defproto("Criteria")
 defproto("Native")
 defproto("Undefined")
-defproto("Array");
-defproto("String");
-defproto("Number");
+defproto("Array")
+defproto("String")
+defproto("Number")
+defproto("Event")
 defproto("Word", function(cpt){
 	cpt.static.parent = {
 		"String": 1
@@ -66,60 +66,92 @@ defproto("Word", function(cpt){
 	}
 });
 defproto("Raw");
+defproto("Env");
+defproto("Identity");
 defproto("Addr");
-defproto("Target");
+defproto("Exit");
 
-var rootref = newaddr("rootns", undefined, rootns);
-rootref.static.name = "rootns";
+//var rootaddr = newaddr("rootEnv", undefined, rootenv);
+//rootaddr.static.name = "rootEnv";
+//newaddr = rootenv.
 
-
-var native = {};
-function deffunc(func, ex){
+var natives = {};
+var makenatives = {};
+function deffunc(func, ex, makefunc){
 	var argnum = func.length;
 	var cpt = newcpt("Function");
 	cpt.static.argdef = [];
 	for(var i=0; i< argnum; i++){
 		cpt.static.argdef.push({i: i, type: "Cpt"});
 	}
+	if(ex){
+		for(var i in ex){
+			cpt.static.argdef[i].type = ex[i];
+		}		
+	}
 	cpt.static.native = func;
 	cpt.proto.Native = protos.Native;
 	var tname = func.name.substr(1);
-	native[tname] = cpt;
-	if(ex)
-		ex(cpt);
-	newaddr(tname, rootns, native[tname]);	
+	cpt.static.name = tname;
+	natives[tname] = cpt;
+
+	newaddr(tname, rootenv, natives[tname]);
+	if(makefunc){
+		makenatives[tname] = makefunc;
+	}
 	return cpt;
 }
+/*
 deffunc(function _bootstrapDisp(){
 	log("bootstrap...");
 //	mkdirpSync("mem");
 	var btsrc = fs.readFileSync("bootstrap.dp").toString();
 	var callobj = str2call(btsrc);
-	call(callobj, rootns);
+	call(callobj, rootenv);
 });
+*/
 deffunc(function _def(addr, argdef, block){
-	var func = newcpt("Function")
+	var func = newcpt("Function");
+	func.static.name = addr.static.name;
 	func.static.argdef = argdef.static.raw.argdef;
 	func.static.calls = block.static.raw.block;
 	addr.static.value = func;
+}, ["Addr", "Argdef", "Block"]);
+/*
+deffunc(function _understand(){
+	//simple form
+	//authority
+	//infer from
+});
+deffunc(function _expect(criteria, action, priority){
+	expect(criteria, action, priority);
 }, function(cpt){
-	cpt.static.argdef[0].type = "Addr"
-	cpt.static.argdef[1].type = "Argdef"
-	cpt.static.argdef[2].type = "Block"	
-}),
+	cpt.static.argdef[0].type = "Block"
+	cpt.static.argdef[1].type = "Block"
+	cpt.static.argdef[2].type = "Number"
+});
+*/
 deffunc(function _assign(left, right){
 	//check type, left match right TODO
 	left.static.value = right;
 	right.refed[left.static.name] = left;
-}, function(cpt){
-	cpt.static.argdef[0].type = "Addr"
+}, ["Addr", "Cpt"], function(left, right){
+	return left + " = " + right;
 });
+/*
 deffunc(function _isa(left, right){
-}, function(cpt){
-	cpt.static.argdef[0].type = "Addr"
-	cpt.static.argdef[1].type = "PROTO"
+}, [Addr, PROTO]function(cpt){
+	cpt.static.argdef[0].type = "Addr";
+	cpt.static.argdef[1].type = "PROTO";
 });
-deffunc(function _exec(file){
+deffunc(function _vagueexec(str){
+	var self = this;
+	return exec(str, self.env);
+});
+*/
+deffunc(function _exec(str){
+	var self = this;
+	return exec(str, self.env);
 });
 deffunc(function _inspect(obj){
 	log(obj);
@@ -130,23 +162,27 @@ deffunc(function _print(obj){
 deffunc(function _printcharcode(obj){
 	printcharcode(obj.static.raw)
 });
+/*
 deffunc(function _ask(cpt){
 	var self = this;
 	var env = this.env;
-	ask(cpt.static.raw, env);	
+	//TODO
+	interact({
+		raw:cpt.static.raw
+	}, env);	
 });
 deffunc(function _vaguecall(aste){
 	var self = this;
-	var calls = vague2call(aste.static.raw, self.env);
-	for(var i in calls){
-		call(calls[i], self.env);
-	}
+	vaguecall(aste.static.raw, self.env);
 });
+*/
 deffunc(function _get(id){
 	var self = this;
 	var addr = id.static.raw;
 	var cpt = getcpt(self.env, addr);
 	return firstv(cpt.refed);
+}, ["String"], function(id){
+	return id;
 });
 deffunc(function _trWord2Addr(word){
 	var self = this;
@@ -154,57 +190,154 @@ deffunc(function _trWord2Addr(word){
 	var cpt = getcpt(self.env, addr);
 	return firstv(cpt.refed);
 });
-
+//expect
+//delete rule
+//Tolarence, -
+//Acceptance, -
+//Understanding -
 //criteria -> function
-var ts1 = newcpt();
-var ts2 = newcpt();
-newaddr("targetset1", rootns, ts1);
-newaddr("targetset2", rootns, ts2);
+var expectcpt = newcpt("Array");
+var expects = expectcpt.dynamic;
 
-function deftarget(criteria, actioncpt, level){
-	var cpt = newcpt("Target");
-	if(!criteria){
-		criteria = "";
-		
-	}else{
-		var call = ast2call(str2ast(criteria));
+function insert(element, array) {
+  array.splice(locationOf(element, array) + 1, 0, element);
+  return array;
+}
+function locationOf(element, array, start, end) {
+  start = start || 0;
+  end = end || array.length;
+  var pivot = start + (end - start) >> 1;
+	var refk = array[pivot].static.sortkey;
+	var tark = element.static.sortkey;
+  if (end-start <= 1)
+		return refk>tark ? pivot-1 : pivot;
+	if(refk === tark){
+		var step;
+		if(pivot == array.length){
+			step = refk - array[pivot - 1].static.sortkey;
+		}else{
+			step = array[pivot + 1].static.sortkey - refk;
+		}
+		element.static.sortkey = refk + step >>1;
+		return pivot;
 	}
+  if(refk < tark){
+    return locationOf(element, array, pivot, end);
+  }
+	return locationOf(element, array, start, pivot);
+}
+newaddr("expectArray", rootenv, expectcpt);
 
-	cpt.dynamic[criteria] = actioncpt;
+function expect(criteria, actioncpt, level){
+	var cpt = newcpt("Expect");
+	cpt.static.criteria = criteria;
+	cpt.static.action = actioncpt;
+	cpt.static.sortkey = level;
 	//criteria to function cpt
 	//call to criteria cpt;
-	
-
-	var addr;
-	if(level == 1){
-		addr = newaddr(undefined, ts1, cpt);
-	}else if(level == 2){
-		addr = newaddr(undefined, ts2, cpt);
-	}
+	insert(expects, expect);
 }
+
+//forall: focus - halfcall - unknown - question - source
+//todos -> expects
+
+//->focus
+//->
+//->sources
+//if 
 //deftarget(""， );
 //join target TODO
+//expect(natives.returnTrueFunction, natives.greet, 1024*1024-2);
+//expect(natives.returnTrueFunction, natives.greet, 1024*1024);
+//flow of think
+function newevent(){
+}
+function fillexpect(todo, exp){
+
+}
+function mindloop(identity, env){
+	var todos = identity.todos;
+	var expects = identity.expects;
+	for(var i in todos){
+		for(var j in expects){
+			if(fillexpect(todos[i], expects[j])){
+				break;
+			}
+		}
+	}
+}
 
 module.exports = disp;
 function disp(str, config){
 	if(!config) config = {};
-	var env = config.env || newenv(rootns);
+	//	var env = config.env || newenv(rootenv);
+	if(!config.user) config.user = process.env.USER;
+	var idobj = newid(config.user, rootenv);
+	if(config.interactive){
+		var cpt = newcpt("Interactive");
+		newaddr("interactive", rootenv, cpt);
+	}
+	exec(str, idobj);
+	/*
+	var st = idobj.static;
+	st.events.push(newevent("input", str));
+	//the mind loop
+	while(st.events.length){
+		var event = st.events.pop();
+		doevent(event, idobj);
+	}
+*/
+}
+
+function doevent(e, idobj){
+	var st = e.static;
+	switch(st.type){
+	case "input":
+		exec(st.arg, idobj);
+		break;
+	case "askhalfcall":
+		break;
+	case "askcpt":
+		break;
+	default:
+		log(e)
+		die("wrong type");
+	}
 	
+}
+function newevent(type, arg){
+	var e = newcpt("Event");
+	e.static.type = type;
+	e.static.arg = arg;
+	return e;
+}
+function dispold(str, config){
+	if(!config) config = {};
+	var env = config.env || newenv(rootenv);
+
 	if(config.interactive){
 		var cpt = newcpt("Interactive");
 		newaddr("interactive", env, cpt);
 	}
 	if(str == "``"){
-		return ask("hello", env);
+		return greet(env);
+	}else{
+		var rtn = exec(str, env);
+		return rtn;
 	}
-	var rtn = read(str, env);
-	return rtn;
 }
-function read(str, env){
+function greet(env){
+	var rtn = interact({raw: ""}, env);
+	if(gettype(rtn, "Exit"))
+		return;
+	else
+		greet(env);
+}
+function exec(str, env){
 	var ast = str2ast(str);
-//	log(ast);
 	var callobj = ast2call(ast);
 	var rtn = call(callobj, env);
+	fs.writeFileSync("tmp.dp", call2str(callobj, env));	
 	//autofill targets
 	return rtn;
 }
@@ -225,6 +358,7 @@ function str2ast(str){
 function str2call(str){
 	return ast2call(str2ast(str));
 }
+
 var basickeys = ["static", "dynamic", "proto", "refed"];
 function extendcpt(cpt, ncpt){
 	for(var i in basickeys){
@@ -234,41 +368,52 @@ function extendcpt(cpt, ncpt){
 	}
 	//TODO database modify
 }
+
 //yes/no
 //get definition|choose assumption
 //get info within context
-function ask(raw, env, config){
-	var interactive = getcpt(env, "interactive", {notnew:1});
-	if(!interactive) return;//auto answer+
-	
-	var ans = rl.question(raw + "?\n>");
+function interact(callobj, env, config){
+	//generate question
+	var qu = call2str(callobj, env);
+	var ans = rl.question(qu+">");
+	/*
 	if(config){
 		var suspense = getcpt(env, "suspense", {local:1});
 		suspense.static.config = config;
 		suspense.static.name = newaddr(raw, env);
 	}
+*/
 	if(!ans){
 		var str2 = rl.getRawInput();
 		if(str2[0].charCodeAt(0) == 0)
-			return;
+			return newcpt("Exit");
 		else
-			ask("type again", env);
+			interact({raw: "type again"}, env);
 	}
 	//	return ans;
-	return read("`"+ans+"`", env);
+	return exec("`"+ans+"`", env);
+}
+function newid(name, env){
+	var nid = newcpt("Identity");
+	nid.static.name = name;
+	nid.static.events = [];
+	newaddr(name, env, nid);
+	return nid;
 }
 function newenv(env){
-	var nenv = newcpt();
+	var nenv = newcpt("Env");
 	newaddr(undefined, env, nenv);
 	return nenv;
 }
 function newcpt(p){
 	var cpt = {
 		static: {},
-		dynamic: {},
+		dynamic: [],
 		proto: {},//proto
 		refed: {},//
 		index: 0,
+		exp: {},
+		exp2: {},
 		___iscpt: 1
 	}
 	if(p){
@@ -313,54 +458,57 @@ function getcpt(cpt, name, config){
 		return rcpt;
 	}
 }
-
-function vague2call(str, env){
-	var cpts = [];
+function vague2calls(str, env){
+	if(!env) env = newenv(rootenv);
+	if(str == " ") return;
+	if(str.match(/;/)){
+		var strs = str.split(/;/);
+		var tcalls = [];
+		for(var i in strs){
+			var subcalls = vague2calls(strs[i], env);
+			for(var j in subcalls){
+				tcalls.push(subcalls[j]);
+			}
+		}
+		return tcalls;
+	}
 	var vt = {
 		active: [['Function', {newfunc: 1}]],
 		halfcalls:{},
 		halfcalli:0,
 		callstodo: [],
-		cptstodo: cpts
+		cptstodo: []
 	}
 	str = str.replace(/^\s*/, "");
 	str = str.replace(/\s*$/, "");
-	var arr=str.match(/'[^']+'|"[^"]+"|[A-Za-z0-9_]+|[^A-Za-z0-9_'"]+/g);
+	var arr=str.match(/'[^']+'|"[^"]+"|[A-Za-z0-9_]+|[^A-Za-z0-9_'"]+/g);	
 	walk(arr, 0, env, vt);
+/*
 	for(var key of Object.keys(ts1.dynamic).reverse()){
 		var t = ts1.dynamic[key].static.target;
-		
 	}
 	for(var key of Object.keys(ts2.dynamic).reverse()){
 		var t = ts2.dynamic[key].static.target;
 	}
-	var suspense = getcpt(env, "suspense", {notnew: 1});
-	if(suspense){
-		var st = suspense.static;
-		for(var i in cpts){
-			for(var key in st.config){
-				var subcpt = gettype(cpts[i], key, env);
-				if(subcpt){
-					cpts.splice(i, 1);
-					newaddr(st.name, env, subcpt);
-				}				
-			}
-		}
-	}
-	for(var i in cpts){
+*/
+	for(var i in vt.cptstodo){
 		//fill suspense
-		var raw = cpts[i].static.raw;
+		var ctd = vt.cptstodo[i];
+		var raw = ctd.static.raw;
 		//TODO analyze config base on arr
-		ask(raw, env, {Cpt:1})
+//		expect();
+		interact({
+			raw: raw
+		}, env);
 	}
 	//halfcalls
 	//autofill
 	return vt.callstodo;
-}
+}		
 function newhalfcall(cpt, env, vt){
 	var hc = vt.halfcalls[vt.halfcalli] = {
 		halfcalli: vt.halfcalli,
-		func: cpt,		
+		func: cpt,
 		args: [],
 		argc: 0
 	}
@@ -436,7 +584,7 @@ function gettype(cpt, type, env){
 		var sscpt = gettype(scpt, type, env);
 		if(sscpt) return sscpt;		
 	}
-}	
+}
 function doactive(cpt, env, vt){
 	var got = 0;
 	for(var i=0; i<vt.active.length;i++){
@@ -444,6 +592,7 @@ function doactive(cpt, env, vt){
 		var subcpt = gettype(cpt, ae[0], env);
 		if(subcpt){
 			if(subdoactive(ae[1], subcpt, env, vt, i)){
+				
 			}
 			got = 1;
 			cpt = subcpt;
@@ -478,6 +627,7 @@ var op = {
 	"+": "plus"
 }
 function walk(arr, arri, env, vt){
+
 	if(arri>arr.length-1){			
 		return;
 	}
@@ -525,10 +675,10 @@ function addr2str(addr){
 function relpath(cpt){
 	return Object.keys(cpt.refed)[0];
 }
-function gennativecall(func, e){
-
+function gennativecall(funcname, e){
 	return {
-		func: native[func],
+		funcname: funcname,
+		func: natives[funcname],
 		args: [{raw: e}],
 		argc: 1
 	}
@@ -545,25 +695,36 @@ function cpt2call(cpt, env){//
 function ast2call(ast){
 	var c = ast[0];
 	var e = ast[1];
-	var cpt;
+	var tcall;
 	switch(c){
 	case "_id":
-		cpt = gennativecall("get", e);
+		tcall = gennativecall("get", e);
 		break;
 	case "_string":
-		cpt = {raw: e};
+		tcall = {raw: e};
 		break;
 	case "_number":
-		cpt = {raw: e};
+		tcall = {raw: e};
 		break;
 	case "_vaguecall":
-		cpt = gennativecall("vaguecall", e);
+		tcall = {
+			calllist: vague2calls(e)
+		}
 		break;
 	case "_newcall":
-		cpt = newcall(e);
+		tcall = newcall(e);
 		break;
+	case "_calllist":
+		var arr = [];
+		for(var i in e){
+			arr.push(ast2call(e[i]));
+		}
+		tcall = {
+			calllist: arr
+		}
+		break;		
 	case "_argdef":
-		cpt = {
+		tcall = {
 			raw: {
 				argdef: e
 			}
@@ -574,7 +735,7 @@ function ast2call(ast){
 		for(var i in e){
 			arr.push(ast2call(e[i]));
 		}
-		cpt = {
+		tcall = {
 			raw: {
 				block: arr
 			}
@@ -584,7 +745,7 @@ function ast2call(ast){
 		log(ast)
 		die("wrong ast");
 	}
-	return cpt;
+	return tcall;
 }
 
 /*
@@ -592,19 +753,43 @@ raw
 native
 calls
  */
-function call(callobj, env){	
+function call(callobj, env){
+	if("calllist" in callobj){
+		var rtn;
+		for(var i in callobj.calllist){
+			rtn = call(callobj.calllist[i], env)
+		}
+		return rtn;
+	}	
 	if("raw" in callobj){
 		return raw2cpt(callobj.raw);
 	}
+	if(!callobj.func){
+		if(callobj.funcpre){
+			var premain = call(callobj.funcpre, env);
+			callobj.func = gettype(call(callobj.funcpre, env), "Function");
+			if(!callobj.func){
+				log(callobj);
+				die("no main");
+			}
+		}else if(callobj.funcname){
+			var premain = call({
+				func: natives.get,
+				args: [{raw: callobj.funcname}]
+			});
+			callobj.func = gettype(call(callobj.funcpre, env), "Function");
+			if(!callobj.func){
+				log(callobj);
+				die("no main");
+			}
+		}else{
+			if(!callobj.func){
+				log(callobj)
+				die("wrong call");
+			}
+		}
+	}
 	var main = callobj.func;
-	if(!main && callobj.funcpre){
-		var premain = call(callobj.funcpre, env);
-		main = gettype(call(callobj.funcpre, env), "Function");
-	}
-	if(!main){
-		log(callobj)
-		die("wrong call");
-	}
 	var args = [];
 	var st = main.static;
 	for(var i =0; i<st.argdef.length; i++){
@@ -615,7 +800,7 @@ function call(callobj, env){
 			log(oriarg)
 			log(callobj.args[i])
 			log(st.argdef[i])
-			die();
+			die("argument not match "+st.name);
 		}
 		args.push(parg);
 	}
@@ -635,17 +820,45 @@ function call(callobj, env){
 			var sarg = st.argdef[i]
 			newaddr(sarg.id, nenv, args[i]);
 		}
+		var rtn;
 		for(var i in st.calls){
 			var subcall = st.calls[i];
-			call(subcall, nenv);
+			rtn = call(subcall, nenv);
 		}
-		return;
+		return rtn;
 	}
 	log(callobj);
 	die("wrong callobj");
 }
-function call2str(){
-	
+function call2str(tcall, env){
+	if("calllist" in tcall){
+		var str = "";
+		if(tcall.calllist.length == 1)
+			return call2str(tcall.calllist[0], env);
+		for(var i in tcall.calllist){
+			var substr = call2str(tcall.calllist[i], env);
+			str += substr + ";\n";
+		}
+		return str;
+	}
+	if("raw" in tcall){
+		if(typeof tcall.raw == "object")
+			return JSON.stringify(tcall.raw);
+		else
+			return tcall.raw.toString();
+	}
+	var argstr = [];
+	for(var i in tcall.args){
+		argstr.push(call2str(tcall.args[i], env));
+	}
+	if(tcall.func){
+		var funcname = tcall.func.static.name;
+		if(makenatives[funcname]){
+			return makenatives[funcname].apply(undefined, argstr);
+		}			
+		return funcname + " " + argstr.join(" ");
+	}
+	return "";
 }
 function raw2cpt(e){
 	if((typeof e) == "object" && ("___iscpt" in e)) return e;
@@ -723,8 +936,7 @@ function warn(code, param1, param2){
 function log(str){
 	//	return;
 	console.log(__line+":"+__function+":"+__line2);
-	console.log(str);
-	
+	console.log(str);	
 }
 function vagueparse(str, env){
 	

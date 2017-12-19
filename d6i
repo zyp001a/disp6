@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 var d = require("./src");
 var fs = require("fs");
-var args = "";
+var args = "`";
 for(var i=2; i<process.argv.length; i++){
 	args+=process.argv[i] + " ";
 }
-d(args);
+args+="`";
+d(args, {interactive:1});

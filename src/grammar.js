@@ -90,8 +90,8 @@ var grammar = {
   "start": "Block",
   "bnf": {
 		"Block": [
-			["ExpEx", "return $$ = $1"],
-			["ExpEx ;", "return $$ = $1"]
+			["ExpList", "return $$ = ['_calllist', $1]"]
+//			["ExpEx ;", "return $$ = $1"]
 		],
 		"Id": [
 			["ID", "$$ = ['_id', $1]"],
@@ -145,7 +145,7 @@ var grammar = {
 		],
 		"Op": [
 			["! Exp", "$$ = ['_newcall', [['_id', 'not'], $2]]"],
-			["Exp = Exp", "$$ = ['_newcall', [['_id', 'assign'], $3, $1]]"],
+			["Exp = Exp", "$$ = ['_newcall', [['_id', 'assign'], $1, $3]]"],
 			["Exp + Exp", "$$ = ['_newcall', [['_id', 'plus'], $1, $3]]"],
 			["Exp - Exp", "$$ = ['_newcall', [['_id', 'minus'], $1, $3]]"],
 			["Exp * Exp", "$$ = ['_newcall', [['_id', 'times'], $1, $3]]"],
